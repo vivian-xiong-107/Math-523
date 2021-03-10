@@ -1,0 +1,158 @@
+---
+title: "Deviance"
+author: "Johanna G. Neslehova"
+date: "26/01/2021"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Profile likelihoood confidence intervals
+
+First, load the bliss data set. The data record the number of insects dying at different levels of insecticide; Bliss ("The calculation of the dose-mortality curve", Annals of Applied Biology, 22, 134-167, 1935)
+
+```{r}
+library(faraway)
+
+data(bliss)
+attach(bliss)
+bliss
+```
+
+First, fit an appropriate GLM model and examine the fit.
+
+```{r}
+modl <- glm(cbind(dead,alive)~conc, family = binomial, x= TRUE)
+summary(modl)
+# Concentration is significant
+# everything is highly significant
+```
+
+Is the concdentration of the insecticide significant? Explain.       
+Due to the $p$-value for intercept and concentration is small, 2.69e-08 and 1.51e-10 respectively. Both variables are highly siginificant.       
+
+Now calculate the profile likelihood CI for the two parameters, and check the profile likelihood confidence interval for $\beta_2$:
+  
+```{r}
+library(MASS)
+confint(modl, level = 0.95 )
+```
+
+we can also look at profile likelihood curve for $\beta_2$
+```{r}
+#install.packages("ProfileLikelihood")
+library(ProfileLikelihood)
+prof <-profilelike.glm(cbind(dead,alive) ~ 1, data= bliss, profile.theta = "conc", lo.theta=0, hi.theta=2, family = binomial(link="logit"), length=500, round=2)
+profilelike.plot(theta=prof$theta, profile.lik.norm = prof$profile.lik.norm, round=2)
+# length = length of the sequence 
+```
+Normalized profile likelihood:     
+Black curve: ratio of the likelihood    
+Pink is the concentration CI 95 percent   
+
+
+
+## Confidence intervals for means 
+
+Using the fitted binomial GLM, calculate the probability of dying at concentration $5$. 
+
+```{r}
+beta <- coef(modl)
+prob <- exp(beta[1]+ beta[2]*5)/(1+exp(beta[1] + beta[2]*5))
+prob
+# use 5 as the concentration
+#prob is the g inverse
+```
+
+Now construct the $95$\% confidence interval for this probability. First, calculate and construct the confidence interval for the corresponding linear predictor: 
+
+```{r}
+# extracting the Fisher information matrix(need at the beginning, x=TRUE)
+I <- t(modl$x)%*%diag(modl$weights)%*%modl$x
+I.inv <- solve(I)
+
+nu <- beta[1]+beta[2]*5
+nu
+
+x <- rbind(c(1,5))
+# values of the predictor
+se.nu <- sqrt(x%*%I.inv%*%t(x))
+se.nu
+# estimated standard error of the mu hat 
+lower.nu <- nu - qnorm(0.975)*se.nu
+upper.nu <- nu + qnorm(0.975)*se.nu
+c(lower.nu, upper.nu)
+# confidence interval for the eta hat 
+```
+
+Using this, calculate the confidence interval for the probability of dying at concentration $5$:
+
+```{r}
+lower.pi <- exp(lower.nu)/(1+exp(lower.nu))
+upper.pi <- exp(upper.nu)/(1+exp(upper.nu))
+c(lower.pi, upper.pi)
+prob
+```
+
+## Deviance 
+
+Next, we can test the goodness of fit of the model using the deviance. Extract the deviance and the degrees of freedom from the fitted GLM and calculate the $p$-value:
+
+```{r}
+deviance(modl)
+df.residual(modl)
+pchisq(deviance(modl), df=df.residual(modl), lower.tail = FALSE)
+```
+Null deviance: 64.76327 on 4 df     
+Residual deviance: 0.37875 on 3 df      
+
+The $p$- value is high, which means that the hypothesis that the fitted model is a reasonable simplification of the saturated model cannot be rejected.      
+
+Interpret the result of the test:
+
+Note that the deviance compares fitted counts and observed counts, which can be calculated by hand as follows.
+
+```{r}
+n <- dead+alive
+n
+modl$fitted
+# fitted probability with dying 
+Mat <- cbind(dead,modl$fitted*n, n-dead, n-modl$fitted*n)
+colnames(Mat) <-  c("dead", "fitted dead", "alive", "fitted alive")
+Mat 
+```
+
+Use this to alternatively calculate the deviance by hand: 
+
+```{r}
+2*(sum(Mat[,1]* log(Mat[,1]/Mat[,2]))+ sum(Mat[,3]* log(Mat[,3]/Mat[,4])))
+```
+
+We saw in the previous section that the concentration of the insecticide is highly significant.    
+Now test for significance using analysis of deviance (which means using a likelihood ratio test). Do this first by hand: calculate the likelihood ratio statistic and compute the p value:
+
+```{r}
+modl0 <- glm(cbind(dead,alive)~1, family = binomial, x=TRUE)
+
+-2*(logLik(modl0) - logLik(modl))
+deviance(modl0)- deviance(modl)
+
+pchisq(deviance(modl0)-deviance(modl), df=1, lower.tail = FALSE)
+# Null deviance is the deviance with only intercept 
+```
+
+Now do the same using the anova function in \texttt{R}.
+
+```{r}
+anova(modl0, modl,test="Chisq")
+```
+
+Interpret the outcome of the test:        
+In this test, there are two models: \texttt{modl0} is the model only has intercept, \texttt{modl} is the model has intercept and concentration.     
+The small $p$-value=1.024e-15 indicates that \texttt{modl0} is not a resonable simplification of \texttt{modl}. Due to the small $p$-value, we need to reject the Null hypothesis. In this case, we can not remove the concentration.   
+Meanwhile, according to the difference between Null deviance and Residual deviance, the larger of the difference, the worser of the simplier model. And the difference between Null deviance and Residual deviance is huge, which indicates that \texttt{modl0} is not a good choice. 
+
+
+

@@ -1,0 +1,143 @@
+---
+title: "MATH523_Assignment1"
+author: "Caiwei Xiong"
+date: "09/02/2021"
+output:
+  html_document:
+    df_print: paged
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+Load the data africa from the faraway library:
+```{r}
+library(faraway)
+data("africa")
+attach(africa)
+head(africa)
+```
+
+
+#### Question a       
+```{r}
+canonical_model <- glm(miltcoup ~ oligarchy, data = africa, family = poisson, x = "TRUE")
+summary(canonical_model)
+```
+```{r}
+coef(canonical_model)
+```
+             
+The oligarchy is clearly significant becuase the $p$-value of the Wald test in oligarchy is 1.06e-09 (i.e. in the summary of the fit, $***$ indicates the oligarchy's $p$-value). Meanwhile, according to the difference between Null deviance and Residual deviance, the larger of the difference, the worser of the simplier model. And the difference between Null deviance and Residual deviance is huge, which indicates that we could not eliminate the oligarchy for this model.                 
+
+
+#### Question b         
+```{r}
+identity_model <- glm(miltcoup ~ oligarchy, data = africa, family = poisson(link = "identity"))
+summary(identity_model)
+```
+
+```{r}
+coef(identity_model)
+```
+             
+The oligarchy is clearly significant becuase the $p$-value of the Wald test in oligarchy is 4.19e-09 (i.e. in the summary of the fit, $***$ indicates the oligarchy's $p$-value). Meanwhile, according to the difference between Null deviance and Residual deviance, the larger of the difference, the worser of the simplier model. And the difference between Null deviance and Residual deviance is huge, which indicates that we could not eliminate the oligarchy for this model.                      
+
+#### Question c
+```{r}
+linear_regression_model <- lm(miltcoup ~ oligarchy)
+summary(linear_regression_model)
+```
+```{r}
+coef(linear_regression_model)
+```
+             
+The oligarchy is clearly significant becuase the $p$-value of the Wald test in oligarchy is 3.12e-07 (i.e. in the summary of the fit, $***$ indicates the oligarchy's $p$-value)           
+
+#### Question d      
+```{r}
+summary(miltcoup)
+summary(oligarchy)
+```
+```{r}
+plot(miltcoup ~ oligarchy, africa, xlim=c(0,20),ylab="Miltcoup", xlab="Oligarchy")
+x <- seq(0,20,1)
+lines(x, exp(coef(canonical_model)[1]+ coef(canonical_model)[2]*x),col="lightpink")
+lines(x, (coef(identity_model)[1]+ coef(identity_model)[2]*x), col="lightblue")
+lines(x, (coef(linear_regression_model)[1]+coef(linear_regression_model)[2]*x), col="mediumpurple")
+legend("topleft", c("Canonical", "identity", "lm"), fill = c("lightpink",
+                                              "lightblue","mediumpurple",cex=0.1))
+```
+
+#### Question e:     
+```{r}
+number_canonical <- exp(coef(canonical_model)[1]+ coef(canonical_model)[2]*10)
+(number_canonical)
+number_identity <- coef(identity_model)[1]+ coef(identity_model)[2]*10
+(number_identity)
+number_lm <- coef(linear_regression_model)[1]+coef(linear_regression_model)[2]*10
+(number_lm)
+```
+The expected number of military coups in a country which has been ruled for $10$ years by military oligarchy for GLM model with canonical link is $2.081886$          
+
+The expected number of military coups in a country which has been ruled for $10$ years by military oligarchy for GLM model with identity link is $2.640717$          
+
+The expected number of military coups in a country which has been ruled for $10$ years by military oligarchy for linear regression model is $2.508278$       
+
+
+#### Question f:      
+In GLM model with canonical link:  
+$$
+expected \ number \ of \ military \ coups =  exp\ ( \  \beta_0 + \beta_1 *  number \ of \ oligarchy) 
+$$
+
+$$
+(i.e. exp\  (-0.4427992 + 0.1176074* number \ of \ oligarchy)  
+$$
+The expected number of military coups will multiple $exp(\beta_{1} * 10$) per $10$ years. (i.e. multiple $exp ( 0.1176074* 10)= 3.24162$)       
+
+In GLM model with identity link:       
+$$
+expected \ number \ of \ military \ coups = \beta_0 + \beta_1 \cdot  number \ of \ oligarchy 
+$$
+
+$$
+(i.e. 0.41414 + 0.22266 \cdot   number \  of \ oligarchy)   
+$$
+The expected number of military coups will add $\beta_{1} \cdot  10$ per $10$ years. (i.e. add $0.22266 \cdot  10 = 2.2266$ )      
+
+In Linear regression model:       
+$$
+expected \ number\  of\  military \ coups = \beta_0 + \beta_1 \cdot  number \ of \ oligarchy    
+$$
+
+$$
+(i.e. 0.5201913 + 0.1988087 \cdot  number \ of\  oligarchy)        
+$$
+The expected number of military coups will add $\beta_{1} \cdot  10$ per $10$ years.(i.e. add $0.1988087 \cdot 10 = 1.988087$ )        
+
+#### Question g:        
+```{r}
+AIC(canonical_model)
+AIC(identity_model)
+AIC(linear_regression_model)
+```
+The lower AIC means a model is considered to be closer to the truth. According to the R output, the GLM model with identity link has the lowest AIC. Thus, the GLM model with identity link is the best suited.        
+
+#### Question h:     
+```{r}
+identity_finalmodel <- glm(miltcoup ~ oligarchy+popn+numregim, family = poisson(link = "identity"))
+summary(identity_finalmodel)
+```
+For the Poisson GLM with the identity link using oligarchy, popn and numregim as predictors will encounter the step size truncated. The Fisher Scoring Algorithm did not converge. This may due to the identity link could lead the mathematically and computationally convenient. But during the iteration, this may cause some numerical error. In this case, the Fisher Scoring Algorithm may not converge.      
+      
+```{r}
+log_finalmodel <- glm(miltcoup ~ oligarchy+popn+numregim, family = poisson(link = "log"))
+summary(log_finalmodel)
+```
+The canonical link for the Poisson GLM is log link. In this case, this model is the Poisson GLM with canonical link. The canonical link may not fit well to the date set. But, in using iterative to find the ML estimates, we do not need worry about the possibility of multiple maxima for the log likelihood. In another word, the canonical link could guarantee the convergence of Fisher Scoring Algorithm. Meanwhile, Fisher Scoring Algorithm and Newton-Raphson algorithm are equivalent under canonical link. Under the Newton-Raphson algorithm the convergence to solution is guaranteed (i.e.globally convergent at quadratic rate).        
+
+The identity link may cause coeffcients become negative, however, the log link can always constrain the coeffcients positive and sensible for all covariante value. 

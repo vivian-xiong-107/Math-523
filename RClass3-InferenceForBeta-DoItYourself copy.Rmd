@@ -1,0 +1,131 @@
+---
+title: "Inference for beta"
+author: "Johanna G. Neslehova"
+date: '2020-02-04'
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+In this R illustration, we will explore the various inference techniques for beta (i.e., standard errors, confidence intervals, and hypothesis tests)
+
+To this end, we will use the beetles data set, recording the number of dead beetles out of n at various concentrations of an insecticide (logdose)
+
+
+```{r}
+Beetles2 <- read.table("/Users/xiongcaiwei/Downloads/Beetles2.dat",header=TRUE)
+attach(Beetles2)
+head(Beetles2)
+```
+
+We will first fit a binomial GLM with the logit link as before, but record the model matrix in the output of the glm function. Fit the model and print its summary.
+
+```{r}
+logitmode <-glm(cbind(dead,n-dead)~logdose, family = binomial, x=TRUE)
+# if we want print the design matrix : logitmode$x
+# use Fisher Scoring iteration by default
+# if the sample size is small, the p-value for the asympotote may not be reliable
+summary(logitmode)
+```
+
+We will now proceed by calculating the standard errors by hand, verifying the formulas from class and checking that R indeed does the same thing. So we will first calculate the Fisher information matrix and invert it, as follows.
+
+```{r}
+logitmode$weights
+#(diagnal entirs of W)
+I <- t(logitmode$x)%*%diag(logitmode$weights)%*%logitmode$x
+I
+I.inv <- solve(I)
+I.inv
+```
+
+The standard errors are then the square roots of the diagonal elements of the inverse Fisher Information
+
+```{r}
+sd <- sqrt(diag(I.inv))
+sd
+```
+
+which we can of course compare to the standard errors in the output of the glm function:
+
+```{r}
+# method 1
+summary(logitmode)$coefficients[,2]
+# method 2
+library(arm)
+se.coef(logitmode)
+```
+
+Now we can test whether each beta=0 using Wald tests. Do it first by hand:
+
+```{r}
+beta <- logitmode$coefficients
+beta/sd
+
+p.val <-pchisq(beta/sd^2, df=1, lower.tail = FALSE)
+p.val
+# highly rejection to H0 in both tails 
+# normal distribution
+2*pnorm(abs(beta/sd),lower.tail = FALSE)
+summary(logitmode)$coefficients
+```
+
+and again compare it to the Wald statistics and p-values in the output of the glm function:
+
+```{r}
+summary(logitmode)
+```
+
+We can also calculate Wald confidence intervals for beta_1 and beta_2: 
+
+```{r}
+z<- qnorm(0.975)
+c.upper <- beta+z*sd
+c.lower <- beta-z*sd
+CI <- cbind(c.lower, c.upper)
+colnames(CI) <- c("2.5%", "97.5%")
+CI
+```
+
+How about testing whether several betas are equal to zero at the same time using a Wald test? To make it more interesting, we will fit a model with logdose and the square of the logdose as a predictor.
+
+```{r}
+# logdose is the input, we can make the change to the input
+logdose.sq <- (logdose)^2
+logitmode2<- glm(cbind(dead, n-dead)~logdose+logdose.sq, family = binomial, x=TRUE)
+summary(logitmode2)
+# the model is not so great
+```
+
+Now test jointly that the coefficients of \texttt{logdose} and \texttt{logdose.sq} are both zero using a Wald test.
+
+```{r}
+I<- t(logitmode2$x)%*%diag(logitmode2$weights)%*%logitmode2$x
+I
+I.inv <- solve(I)
+I.inv0 <- I.inv[2:3,2:3]
+# beta 2 and beta 3 (extracting from the inverse fisher information)
+I.inv0
+I0 <- solve(I.inv0)
+I0
+
+library(Matrix)
+dof <- as.numeric(rankMatrix(I.inv0)) 
+# degrees of freedom
+dof
+# calculate the rank of the matrix
+
+W <- t(matrix(beta, nrow = 2))%*%I0%*%matrix(beta,nrow = 2)
+W
+#Wald statistic 
+
+pchisq(W,df=dof,lower.tail = FALSE)
+# p-value
+```
+
+
+

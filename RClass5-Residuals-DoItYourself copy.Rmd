@@ -1,0 +1,305 @@
+---
+title: "Residuals"
+author: "Caiwei Xiong"
+date: "12/02/2021"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Calculating Residuals 
+
+In this session, we will illustrate residuals for GLMs. First, load the bliss data set that we used previously to illustrate the deviance. The data record the number of insects dying at different levels of insecticide; Bliss ("The calculation of the dose-mortality curve", Annals of Applied Biology, 22, 134-167, 1935)
+
+```{r}
+library(faraway)
+
+data(bliss)
+attach(bliss)
+bliss
+```
+
+Fit a binomial GLM with the logit link, as before, using the intercept and \texttt{conc} as predictors:
+
+```{r}
+modl <- glm(cbind(dead,alive)~conc, family = binomial(link = "logit")   , x= TRUE)
+summary(modl)
+```
+
+We will now inspect residuals. First, check out the "response residuals" $y_i - \hat(mu_i)$
+
+```{r}
+#dead/30
+# observed responses 
+#fitted(modl)
+# fitted value 
+r.response <- dead/30 -  fitted(modl)
+r.response
+```
+
+Compute the same residual using the function \texttt{residuals} (and check that you get the same answer)
+
+```{r}
+residuals(modl, "response")
+```
+
+Next, we can calculate the Pearson residuals (these are NOT the standardized Pearson residuals), using the function residuals as well as by hand. 
+
+The $i$th Pearson residual is given by
+$$
+r_{P_i} = \frac{y_i - \hat \mu_i}{\sqrt{\hat \mu_i(1- \hat \mu_i)/m_i}}
+$$
+
+Calculate the Pearson residuals using the function \texttt{residuals} as well as by hand.
+
+```{r}
+r.pearson_byhand <- (dead/30 - modl$fitted)/ ((modl$fitted*(1-modl$fitted)/30)^(1/2))
+r.pearson_byhand
+```
+
+```{r}
+r.pearson <- residuals(modl, "pearson")
+r.pearson
+```
+
+We can also compute the deviance residuals. The $i$th deviance residual is given by:
+
+$$
+r_{D_i} = {\rm sign}(y_i - \hat \mu_i)\sqrt{2[m_i y_i \cdot \log \frac{y_i \cdot m_i}{\hat \mu_i \cdot m_i}+ m_i (1-y_i) \log \frac{(1-y_i)m_i}{(1- \hat \mu_i)m_i} ]}
+$$
+
+Now calculate the deviance residuals using \texttt{residuals} and by hand. It can happen that you will get one \texttt{NA}, if so, figure out why and correct accordingly.
+```{r}
+y_i <- dead/30
+a_1 <- (y_i*30)/(modl$fitted*30)
+b_1 <- ((1-y_i)*30)/((1-modl$fitted)*30)
+innerfunction <- 2*(30*y_i*(log(a_1)) + 30*(1-y_i)*(log(b_1)))
+r.deviance_byhand <- sign((y_i - modl$fitted))*(sqrt(innerfunction))
+r.deviance_byhand
+```
+The third data occur the NaN:          
+```{r}
+third_innerfunction <- 2*(30*(15/30)*log((15/30*30)/(0.5*30))+
+   30*(1-15/30)*log(((1-15/30)*30)/((1-0.5)*30)))
+third_innerfunction
+(log((15/30*30)/(0.5*30)))
+(sign((15/30 - 0.5)))*sqrt(third_innerfunction)
+```
+In this case, we will use the round function to deal with NA problem. 
+```{r}
+innerfunction_new <- round(innerfunction, digits=10)
+r.deviance_byhand_new <- sign((y_i - modl$fitted))*(sqrt(innerfunction_new))
+r.deviance_byhand_new
+```
+
+```{r}
+r.deviance <- residuals(modl, "deviance")
+r.deviance
+```
+
+Careful with the so-called working residuals - these are the residuals in the final iteration of the IWLS fit, i.e. $(y_i- \hat mu_i)*g^\prime(\hat mu_i)$. Usually, we do not use these residuals. Calculate these residuals below using the function \texttt{residuals}.
+
+```{r}
+r.working <- residuals(modl,"working")
+r.working
+modl$residuals
+(dead/30 - modl$fitted)/(modl$fitted*(1-modl$fitted))
+```
+
+ Finally, we can also compute the Anscombe residuals, but these are not implemented in the R function residuals. You can calculate the $i$th Anscombe residual to be        
+ 
+ $$
+ r_{A_i} = \sqrt{m_i} (B(y_i,\frac{2}{3}, \frac{2}{3})- B(\hat \mu_i, \frac{2}{3},\frac{2}{3}))(\hat \mu_i(1-\hat \mu_i))^{-\frac{1}{6}}
+ $$
+ 
+where $B(z,a,b) = \int^2_0 t^{a-1}(1-t)^{b-1}dt$             
+
+Now calculate the Anscombe residual with \texttt{R}:
+```{r}
+r.anscombe <- sqrt(30)*(pbeta(dead/30,2/3,2/3)-pbeta(modl$fitted, 2/3,2/3))*beta(2/3,2/3)*(1/(modl$fitted*(1-modl$fitted))^(1/6))
+r.anscombe
+```
+
+Anscombe residuals tend to be very close to the deviance residuals, so we typically just use the latter. To illustrate, we can compare all the residuals we have calculated so far:
+
+```{r}
+# and compare all computed residuals
+R <- cbind(round(r.response,digits = 7), round(r.pearson, digits = 7), round(r.deviance, digits=7), round(r.anscombe, digits=7), round(r.working, digits = 7))
+colnames(R) <- c("response", "Pearson", "deviance", "Anscombe", " working") 
+R
+```
+
+We can also calculate the influence of each observation using the hat matrix and standardize the Pearson residuals: 
+
+```{r}
+influence(modl)$hat
+rstandard(modl, infl = influence(modl, do.coef = FALSE), type = "pearson")
+r.pearson/sqrt(1-influence(modl)$hat)
+```
+
+Finally, let's plot the residuals against the linear predictor. You can choose one of the residuals you calculated above.
+
+```{r}
+plot(r.anscombe~conc, xlab=expression(hat(eta)), ylab = "Anscombe residuals", pch=20)
+plot(r.anscombe~predict(modl, type="link"), xlab=expression(hat(eta)), ylab="Anscombe residuals", pch=20)
+```
+
+```{r}
+plot(r.deviance~conc, xlab=expression(hat(eta)), ylab="Deviance residuals", pch=20)
+plot(r.deviance~predict(modl, type="link"), xlab=expression(hat(eta)), ylab="Deviance residuals", pch=20)
+```
+
+## Difficulties with Residuals in GLM
+
+Next, to illustrate the difficulties with residuals in GLMs we can illustrate residuals on artifical data. We will first generate these from a Poisson GLM with $\log(\mu_i) = 5-0.1*x_i$, where the $x_i$'s are generated from the uniform distribution $\mathcal{U}(0,100)$. Complete the code below to generate the data and plot them.
+
+```{r}
+set.seed(1728)
+
+n<-500
+X<-runif(n,0,100)
+# uniform variable 
+b0<-5
+b1 <- -0.1
+mu <- exp(b0+b1*X)
+# actual true means
+Y <- rpois(n,mu)
+# generating 500 parameters
+plot(X,Y)
+```
+
+Now fit two Poisson GLMs, one with $x$ as a predictor and the other with only the intercept.
+
+```{r}
+f0 <- glm(Y~1, family = poisson)
+# only intercept
+f1 <- glm(Y~X, family = poisson)
+```
+
+Calculate the various residuals (pearson, deviance, response, Anscombe) for the two models:
+
+```{r}
+rp0 <- residuals(f0, "pearson")
+# pearson
+rd0 <- residuals(f0, "deviance")
+# deviance
+rr0 <- residuals(f0, "response")
+# response
+fA0 <- fitted(f0)
+ra0 <- 1.5*(Y^(2/3)- fA0^(2/3))/(fA0^(1/6))
+# Anscombe
+
+rp1 <- residuals(f1, "pearson")
+rd1 <- residuals(f1, "deviance")
+rr1 <- residuals(f1, "response")
+fA1 <- fitted(f1)
+ra1 <- 1.5*(Y^(2/3)- fA1^(2/3))/(fA1^(1/6))
+```
+
+Now we can plot the residuals: first, plot the response residuals against $X$ for the two models. 
+```{r}
+par(mfrow=c(1,2))
+matplot(X,rr0,xlab="X",ylab="Response Residual",pch=20)
+matplot(X,rr1,xlab="X",ylab="Response Residual",pch=20)
+# response residual y_i - \hat \mu_i 
+```
+
+Do you find the response residuals useful? Explain.             
+There are two response residual figures. The Left-hand side's residual figure is for the model which only contain the intercept. And the right-hand side's residual figure is for the ture model. There is somethig wrong with the residuals. Very attempting and not good.                
+
+Now let's plot the Pearson residuals.
+
+```{r}
+par(mfrow=c(1,3))
+matplot(X,rp0,xlab="X",ylab="Pearson Residual",pch=20)
+matplot(X,rp1,xlab="X",ylab="Pearson Residual",pch=20,ylim=c(-3,5),xlim=c(35,100))
+```
+
+The points seem to appear on strange strange lines on the right plot, let's investigate them! Can you extract the points from the residual plot that lie on these lines?            
+
+Left the model with only intercept
+The common touble with GLM                    
+very discrete models. Binomial GLM with small size.                   
+relfect the discretice of your model.                     
+```{r}
+I <- Y == 0 
+matplot(X[I], rp1[I], xlab = "X", ylab = "Pearson Residuals", pch = 20, xlim = c(0,100), ylim = c(-3,5))
+
+I1 <- Y == 1
+points(X[I1], rp1[I1], pch=20, col="red")
+
+I2 <- Y == 2
+points(X[I2], rp1[I2], pch=20, col="blue")
+
+I3 <- Y == 3
+points(X[I3], rp1[I3], pch=20, col="green")
+```
+
+We can also compare the Pearson, deviance and Anscombe residuals:              
+```{r}
+par(mfrow=c(3,2))
+
+matplot(X,rp0,xlab="X",ylab="Pearson Residual",pch=20)
+matplot(X,rp1,xlab="X",ylab="Pearson Residual",pch=20)
+
+
+matplot(X,rd0,xlab="X",ylab="Deviance Residual",pch=20)
+matplot(X,rd1,xlab="X",ylab="Deviance Residual",pch=20)
+
+matplot(X,ra0,xlab="X",ylab="Anscombe Residual",pch=20)
+matplot(X,ra1,xlab="X",ylab="Anscombe Residual",pch=20)
+```
+
+Finally, plot the deviance residuals against fitted linear predictor.
+
+```{r}
+par(mfrow=c(1,2))
+matplot(X,rd1, xlab = "X", ylab = "Deviance Residual", pch = 20)
+
+plot(rd1 ~predict(f1, type = "link"), xlab=expression(hat(eta)), ylab="Deviance residuals",pch=20)
+```
+
+Here is another example that highlights problems with residuals. This time, we will generate data from the Binomial GLM with the logit link and ${\rm logit}(\pi_i) = 0.1+0.7x_i$. Complete the code below to generate the data, then fit the Binomial GLM with the logit link and the intercept and $X$ as predictors, and plot the deviance residuals against $X$. 
+
+```{r}
+set.seed(2)
+
+n<- 25
+X <- runif(n,-4,4)
+b0 <- 0.1
+b1 <- 0.7
+m <- 4 # change this to explore.
+eta <- b0 + b1*X
+p <- exp(eta)/(1+exp(eta))
+Y <- rbinom(n,size = m, prob = p)
+
+mod<- glm(cbind(Y, m-Y)~X, family = binomial)
+summary(mod)
+plot(X,residuals(mod), xlab = "X", ylab = "Deviance Residuals")
+
+```
+
+Repeat this for $m \in {3,15}$. What do you observe?            
+
+If we only change the value for $m$, the figure for the deviance residuals will show that this data set is very discrete sample. This is common trouble for the GLM model. When the binomial GLM with small sample size, it will be regarded as a very discrete sample. However, if we change the sample size become bigger value(i.e, $500$) the deviance residuals' figure will goods good.                     
+
+```{r}
+set.seed(2)
+
+n<- 500
+X <- runif(n,-4,4)
+b0 <- 0.1
+b1 <- 0.7
+m <- 15 # change this to explore.
+eta <- b0 + b1*X
+p <- exp(eta)/(1+exp(eta))
+Y <- rbinom(n,size = m, prob = p)
+
+mod<- glm(cbind(Y, m-Y)~X, family = binomial)
+summary(mod)
+plot(X,residuals(mod), xlab = "X", ylab = "Deviance Residuals")
+```
+
+

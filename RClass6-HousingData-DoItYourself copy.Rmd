@@ -1,0 +1,245 @@
+---
+title: "Housing Data Analysis"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+## Housing Data Analysis using Linear Regression
+
+Consider the data on home selling prices. The response {\tt price} is the price of a home in Gainesville, Florida, in 1000 USD. the explanatory variables are whether the home is {\tt new} (0 or 1), the {\tt taxes} in USD, number of {\tt bedrooms}, the number of {\tt bathrooms}, and the {\tt size} of the home in square feet. 
+
+```{r}
+Houses <- read.table("/Users/xiongcaiwei/Downloads/Houses.dat",header=TRUE)
+attach(Houses)
+head(Houses)
+dim(Houses)
+# how the price of house will be influence by other variables
+```
+
+First visualize the data with a scatter plot.
+
+```{r}
+pairs(cbind(price,size, taxes, beds, baths))
+# beds and baths are discrete
+# size, taxes and price are continuous variables 
+# looking for continuous responses
+# size and taxes and prices are high correlated
+```
+
+Calculate the correation between \texttt{price}, \texttt{size}, and \texttt{taxes}.
+
+```{r}
+cor(cbind(price,size,taxes))
+# Pearson linear correlation
+```
+Based on this correlation, we will use only size, beds, baths and new as predictors. Why?            
+No, according to the correation, if we only use size, beds, baths, and new as predictors, this will make the model become unstable. In order to avoid multicolinearity, we need to consider more.                   
+First, find a suitable linear regression model using $F$ tests (analysis of variance).
+```{r}
+fit1 <- lm(price ~ size+ new + baths + beds)
+fit2 <- lm(price ~ (size+ new + baths + beds)^2)
+fit3 <- lm(price ~ (size+ new + baths + beds)^3)
+# including three way interactions
+anova(fit2, fit3)
+anova(fit1, fit2)
+```
+Because we have high $p$-value: $0.1042$. Three-way intercations are not needed, but some two-way interactions should be incuded.(because the $p$-value is $0.0009128$). The goal of regression model is to find the signal of the models.            
+
+```{r}
+fit4 <- update(fit2,.~.-baths:beds)
+anova(fit4, fit2)
+fit5 <- update(fit4, .~.-size:baths)
+anova(fit5, fit4)
+fit6 <- update(fit5, .~.-new: beds)
+anova(fit6, fit5)
+fit8 <- update(fit6, .~.-new: baths-baths)
+anova(fit8, fit6)
+# backwards elimination
+```
+interactions are seems all significant. (The main affects could not be kicked out.) 
+
+```{r}
+summary(fit6)$adj.r.squared
+summary(fit8)$adj.r.squared
+```
+
+```{r}
+step(fit2)
+#AIC(fit6)
+#AIC(fit8)
+BIC(fit6)
+BIC(fit8)
+```
+
+Now consider the model \texttt{price ~ size + new + beds + size:new + size:beds}. If you have not already, fit it and report it's summary.
+
+```{r}
+summary(fit8)
+```
+
+How does \texttt{fit8} compare to the model you selected using $F$ tests?
+
+```{r}
+anova(fit8, fit6, test = "F")
+```
+
+Now try to interpret the model \texttt{fit8}, i.e., describe the effect of new, size and beds. You can write your interpretations here:                   
+The estimate coefficients for size is $0.006840$, for new is $-53.685782$, for beds is $-53.637336$. However, this means the more new the house, the prices will become less. And the the more bedrooms, the lesser prices. This obey to the common sense. In this case, there may be something wrong with the model.             
+
+\texttt{price ~ size + new + beds + size:new + size:beds} = \texttt{fit8}
+Finally, inspect the fit of model \texttt{fit8}.
+```{r}
+hist(rstandard(fit8))
+qqnorm(rstandard(fit8))
+lines(c(-4,4), c(-4,4), col="red")
+plot(fitted(fit8))
+# 9,64 are unormal
+# 9 the most expensive 
+# 64 relative large, but not expensive
+# we can remove these two data, but the residual does not change
+# we need to transform of the responce 
+```
+
+Are you satisfied with the fit? Explain.              
+This residual figure does not looks super normal. And there is an indication of heterscedasticity(does not homogeneous). Meanwhile, the variability of the prices will depend on the price.                  
+
+## Analysis of Housing Data using Gamma GLM
+
+Why do you think a gamma GLM model makes sense here?         
+
+Within the GLM models we studied until now, both normal and gamma GLM would be able to garuantte the responce value all keep in the positive region. The normal GLM's mean-variance relationship is $1$. In this case, the variance will not change. As for gamma GLM, the mean-variance relationship is $\mu^2$, so the variance grows with the mean, and this makes sense here.                          
+
+Consider the following two models:
+```{r}
+gfit3 <- glm(price~(size+new+baths+beds)^3,family=Gamma(link="identity"))
+gfit8 <- glm(price~size+new+beds+size:new+size:beds,family=Gamma(link="identity"))
+# should have interaction between new and old 
+# can do the backwards elminiation slowly
+```
+
+Is \texttt{gfit8} a reasonable simplification of \texttt{gfit3}? Use the appropriate test using \texttt{anova} to decide:
+```{r}
+# if we do not have the dispersion parameter, we regard the deviance as the scaled deviance
+anova(gfit8, gfit3, test = "F")
+# the difference is small 
+# according to the anova table, we can make the simplification
+```
+Due to the difference of residual deviance is small, \texttt{gfit8} is a reasonable simplification of \texttt{gfit3}. Meanwhile, the $p$-value for the $F$ test is large, in this case, we can regard \texttt{gfit8} as a reasonable model.                   
+
+Calculate the test statistic by hand.        
+```{r}
+deviance(gfit8)
+deviance(gfit3)
+gfit3$df.residual
+# calculating the parameters
+gfit8$df.residual
+((deviance(gfit8)-deviance(gfit3))/(15-6))/(deviance(gfit3)/85) 
+```
+R use a slightly different estimator of the dispersion parameter         
+
+Inspecting \texttt{gfit8}, print its summary and see if you can calculate the estimated dispersion parameter by hand.         
+```{r}
+summary(gfit3)$dispersion
+deviance(gfit3)/85
+X <- sum(residuals(gfit3, "pearson")^2)
+# sum of pearson residual squares 
+X/(85)
+((deviance(gfit8)-deviance(gfit3))/(15-6))/(X/(85)) 
+```
+
+Now compare models \texttt{gfit8} and \texttt{fit8} using AIC. Which one do you prefer based on this criterion?            
+```{r}
+AIC(gfit8)
+AIC(fit8)
+# same design matrix, same parameter
+```
+Based on the criterion of AIC, we would choose the model with lowest AIC. In this case, we will prefer the model gfit8.(i.e., the glm model)             
+
+```{r}
+summary(gfit8)
+summary(fit8)
+# a model with too many variables and no significant variable -> overfitting
+```
+
+See if \texttt{gfit8} can be simplified further. Use analysis of deviance.          
+```{r}
+gfit9 <- update(gfit8,.~.-size:beds)
+anova(gfit9, gfit8, test="F")
+summary(gfit9)
+
+gfit10 <- glm(price~size+new+size:new, family = Gamma(link = "identity"))
+anova(gfit10, gfit9, test="F")
+summary(gfit10)
+
+gfit11 <- glm(price~size+new, family = Gamma(link = "identity"))
+anova(gfit11, gfit10, test= "F")
+summary(gfit11)
+
+gfit12 <- glm(price~size, family = Gamma(link = "identity"))
+anova(gfit12, gfit11, test="F")
+summary(gfit12)
+```
+
+```{r}
+c(AIC(gfit10),  AIC(gfit11), AIC(gfit12))
+AIC(fit8)
+```
+According to the deviance criterion, the residual deviance and null deviance needs to be the same to show that the new model would be the simplication one. But according to the output, all difference between null deviance and residual deviance is huge. In this case, the model \texttt{gfit8} could not be simplified further.                                
+
+Once you have find your favourite model, inspect its fit using residual plots.          
+```{r}
+summary(gfit12)
+rp <- residuals(gfit12, "pearson")
+rd <- residuals(gfit12, "deviance")
+etahat <- predict(gfit12, type="link")
+# fitted value of the residual value
+plot(rp~etahat)
+plot(rd~etahat)
+```
+
+The next and final step is to interpret the selected model. The floor is yours to try!
+
+```{r}
+summary(gfit12)$dispersion
+```
+
+```{r}
+# know the shape parameter of the gamma 
+1/summary(gfit12)$dispersion
+# indicates the distributionof y_i is skewed,  as expected
+```
+
+```{r}
+# standard deviation for 100,000$ houses
+sqrt(summary(gfit12)$dispersion)*100
+# standard deviation for 400,000$ houses
+sqrt(summary(gfit12)$dispersion)*400
+# 4 times standard deviation
+```
+
+#### Finding the relationship between new/old+size and price:
+```{r}
+#summary(gfit10)
+beta <- coef(gfit10)
+# old homes
+beta[2]*1000
+# new homes
+(beta[2]+beta[4])*1000
+# if we have the home with size 0, and the home is new, which may lead to a decease
+```
+
+```{r}
+s <- seq(500,4000, 0.01)
+mu.old <- beta[1]+s*beta[2]
+mu.new <- beta[1]
+# interaction  between continuous and discrete, it will be useful to draw a graph
+```
+
+Can you summarize the interpretation in one or two punchy sentences that a real estate agent (with no statistics training) will understand?               
+
+When the size of house is small, the old house will be more valuable than the new house. However, when the size of house is large, the new house will have higher prices than the old one.       
+
+
+
